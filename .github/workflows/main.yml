@@ -1,18 +1,58 @@
-name: Docker Image CI
+name: CI/CD Pipeline to AWS ECR
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO_NAME: nodejs-demo-app
+  AWS_ACCOUNT_ID: 582976170913
 
 jobs:
-
-  build:
-
+  build-and-deploy:
+    name: Build, Test, Push to ECR
     runs-on: ubuntu-latest
 
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
-    - uses: actions/checkout@v4
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+      # Step 1: Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # Step 4: Run tests
+      - name: Run tests
+        run: npm test
+
+      # Step 5: Configure AWS credentials and assume role
+      - name: Configure AWS credentials (Assume Role)
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: arn:aws:iam::582976170913:role/Admin
+          role-session-name: GitHubActionsSession
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Step 6: Login to Amazon ECR
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Step 7: Build, tag, and push Docker image to ECR
+      - name: Build and Push to ECR
+        run: |
+          IMAGE_URI=${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_NAME }}:latest
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
